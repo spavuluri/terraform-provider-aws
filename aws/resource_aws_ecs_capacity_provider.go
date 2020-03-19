@@ -9,14 +9,12 @@ import (
 	"github.com/aws/aws-sdk-go/service/ecs"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 func resourceAwsEcsCapacityProvider() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceAwsEcsCapacityProviderCreate,
 		Read:   resourceAwsEcsCapacityProviderRead,
-		Update: resourceAwsEcsCapacityProviderUpdate,
 		Delete: resourceAwsEcsCapacityProviderDelete,
 		Importer: &schema.ResourceImporter{
 			State: resourceAwsEcsCapacityProviderImport,
@@ -98,7 +96,6 @@ func resourceAwsEcsCapacityProvider() *schema.Resource {
 					},
 				},
 			},
-			"tags": tagsSchema(),
 		},
 	}
 }
@@ -109,11 +106,6 @@ func resourceAwsEcsCapacityProviderCreate(d *schema.ResourceData, meta interface
 	input := ecs.CreateCapacityProviderInput{
 		Name:                     aws.String(d.Get("name").(string)),
 		AutoScalingGroupProvider: expandAutoScalingGroupProvider(d.Get("auto_scaling_group_provider")),
-	}
-
-	// `CreateCapacityProviderInput` does not accept an empty array of tags
-	if v := d.Get("tags").(map[string]interface{}); len(v) > 0 {
-		input.Tags = keyvaluetags.New(v).IgnoreAws().EcsTags()
 	}
 
 	out, err := conn.CreateCapacityProvider(&input)
@@ -135,7 +127,6 @@ func resourceAwsEcsCapacityProviderRead(d *schema.ResourceData, meta interface{}
 
 	input := &ecs.DescribeCapacityProvidersInput{
 		CapacityProviders: []*string{aws.String(d.Id())},
-		Include:           []*string{aws.String(ecs.CapacityProviderFieldTags)},
 	}
 
 	output, err := conn.DescribeCapacityProviders(input)
@@ -161,26 +152,8 @@ func resourceAwsEcsCapacityProviderRead(d *schema.ResourceData, meta interface{}
 	d.Set("arn", provider.CapacityProviderArn)
 	d.Set("name", provider.Name)
 
-	if err := d.Set("tags", keyvaluetags.EcsKeyValueTags(provider.Tags).IgnoreAws().Map()); err != nil {
-		return fmt.Errorf("error setting tags: %s", err)
-	}
-
 	if err := d.Set("auto_scaling_group_provider", flattenAutoScalingGroupProvider(provider.AutoScalingGroupProvider)); err != nil {
 		return fmt.Errorf("error setting autoscaling group provider: %s", err)
-	}
-
-	return nil
-}
-
-func resourceAwsEcsCapacityProviderUpdate(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*AWSClient).ecsconn
-
-	if d.HasChange("tags") {
-		o, n := d.GetChange("tags")
-
-		if err := keyvaluetags.EcsUpdateTags(conn, d.Id(), o, n); err != nil {
-			return fmt.Errorf("error updating ECS Cluster (%s) tags: %s", d.Id(), err)
-		}
 	}
 
 	return nil

@@ -30,7 +30,6 @@ func TestAccAWSEcsCapacityProvider_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "name", rName),
 					testAccCheckResourceAttrRegionalARN(resourceName, "id", "ecs", fmt.Sprintf("capacity-provider/%s", rName)),
 					resource.TestCheckResourceAttrPair(resourceName, "id", resourceName, "arn"),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "0"),
 					resource.TestCheckResourceAttrPair(resourceName, "auto_scaling_group_provider.0.auto_scaling_group_arn", "aws_autoscaling_group.test", "arn"),
 					resource.TestCheckResourceAttr(resourceName, "auto_scaling_group_provider.0.managed_termination_protection", "DISABLED"),
 					resource.TestCheckResourceAttr(resourceName, "auto_scaling_group_provider.0.managed_scaling.0.minimum_scaling_step_size", "1"),
@@ -115,51 +114,6 @@ func TestAccAWSEcsCapacityProvider_ManagedScalingPartial(t *testing.T) {
 	})
 }
 
-func TestAccAWSEcsCapacityProvider_Tags(t *testing.T) {
-	var provider ecs.CapacityProvider
-	rName := acctest.RandomWithPrefix("tf-acc-test")
-	resourceName := "aws_ecs_capacity_provider.test"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:     func() { testAccPreCheck(t) },
-		Providers:    testAccProviders,
-		CheckDestroy: testAccCheckAWSEcsCapacityProviderDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccAWSEcsCapacityProviderConfigTags1(rName, "key1", "value1"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSEcsCapacityProviderExists(resourceName, &provider),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key1", "value1"),
-				),
-			},
-			{
-				ResourceName:      resourceName,
-				ImportStateId:     rName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-			{
-				Config: testAccAWSEcsCapacityProviderConfigTags2(rName, "key1", "value1updated", "key2", "value2"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSEcsCapacityProviderExists(resourceName, &provider),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key1", "value1updated"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key2", "value2"),
-				),
-			},
-			{
-				Config: testAccAWSEcsCapacityProviderConfigTags1(rName, "key2", "value2"),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckAWSEcsCapacityProviderExists(resourceName, &provider),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.key2", "value2"),
-				),
-			},
-		},
-	})
-}
-
 // TODO add an update test config - Reference: https://github.com/aws/containers-roadmap/issues/633
 
 func testAccCheckAWSEcsCapacityProviderDestroy(s *terraform.State) error {
@@ -229,13 +183,6 @@ resource "aws_autoscaling_group" "test" {
     id = aws_launch_template.test.id
   }
 
-  	tags = [
-		{
-			key                 = "foo"
-			value               = "bar"
-			propagate_at_launch = true
-		},
-	]
 }
 `, rName)
 }
@@ -286,37 +233,4 @@ resource "aws_ecs_capacity_provider" "test" {
 	}
 }
 `, rName)
-}
-
-func testAccAWSEcsCapacityProviderConfigTags1(rName, tag1Key, tag1Value string) string {
-	return testAccAWSEcsCapacityProviderConfigBase(rName) + fmt.Sprintf(`
-resource "aws_ecs_capacity_provider" "test" {
-	name = %q
-
-	tags = {
-		%q = %q,
-	}
-
-	auto_scaling_group_provider {
-		auto_scaling_group_arn = aws_autoscaling_group.test.arn
-	}
-}
-`, rName, tag1Key, tag1Value)
-}
-
-func testAccAWSEcsCapacityProviderConfigTags2(rName, tag1Key, tag1Value, tag2Key, tag2Value string) string {
-	return testAccAWSEcsCapacityProviderConfigBase(rName) + fmt.Sprintf(`
-resource "aws_ecs_capacity_provider" "test" {
-	name = %q
-
-	tags = {
-		%q = %q,
-		%q = %q,
-	}
-
-	auto_scaling_group_provider {
-		auto_scaling_group_arn = aws_autoscaling_group.test.arn
-	}
-}
-`, rName, tag1Key, tag1Value, tag2Key, tag2Value)
 }

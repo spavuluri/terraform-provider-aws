@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 const (
@@ -91,7 +90,6 @@ func resourceAwsEcsCluster() *schema.Resource {
 					},
 				},
 			},
-			"tags": tagsSchema(),
 		},
 	}
 }
@@ -116,7 +114,6 @@ func resourceAwsEcsClusterCreate(d *schema.ResourceData, meta interface{}) error
 
 	input := ecs.CreateClusterInput{
 		ClusterName: aws.String(clusterName),
-		Tags:        keyvaluetags.New(d.Get("tags").(map[string]interface{})).IgnoreAws().EcsTags(),
 	}
 
 	if v, ok := d.GetOk("setting"); ok {
@@ -149,7 +146,6 @@ func resourceAwsEcsClusterRead(d *schema.ResourceData, meta interface{}) error {
 
 	input := &ecs.DescribeClustersInput{
 		Clusters: []*string{aws.String(d.Id())},
-		Include:  []*string{aws.String(ecs.ClusterFieldTags)},
 	}
 
 	log.Printf("[DEBUG] Reading ECS Cluster: %s", input)
@@ -220,10 +216,6 @@ func resourceAwsEcsClusterRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("error setting setting: %s", err)
 	}
 
-	if err := d.Set("tags", keyvaluetags.EcsKeyValueTags(cluster.Tags).IgnoreAws().Map()); err != nil {
-		return fmt.Errorf("error setting tags: %s", err)
-	}
-
 	return nil
 }
 
@@ -245,14 +237,6 @@ func resourceAwsEcsClusterUpdate(d *schema.ResourceData, meta interface{}) error
 
 		if err = waitForEcsClusterActive(conn, clusterName, ecsClusterTimeoutUpdate); err != nil {
 			return fmt.Errorf("error waiting for ECS Cluster (%s) update: %s", d.Id(), err)
-		}
-	}
-
-	if d.HasChange("tags") {
-		o, n := d.GetChange("tags")
-
-		if err := keyvaluetags.EcsUpdateTags(conn, d.Id(), o, n); err != nil {
-			return fmt.Errorf("error updating ECS Cluster (%s) tags: %s", d.Id(), err)
 		}
 	}
 

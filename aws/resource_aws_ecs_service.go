@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-aws/aws/internal/keyvaluetags"
 )
 
 func resourceAwsEcsService() *schema.Resource {
@@ -81,12 +80,6 @@ func resourceAwsEcsService() *schema.Resource {
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					return d.Get("scheduling_strategy").(string) == ecs.SchedulingStrategyDaemon
 				},
-			},
-
-			"enable_ecs_managed_tags": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
 			},
 
 			"health_check_grace_period_seconds": {
@@ -324,23 +317,6 @@ func resourceAwsEcsService() *schema.Resource {
 				},
 			},
 
-			"propagate_tags": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					if old == "NONE" && new == "" {
-						return true
-					}
-					return false
-				},
-				ValidateFunc: validation.StringInSlice([]string{
-					ecs.PropagateTagsService,
-					ecs.PropagateTagsTaskDefinition,
-					"",
-				}, false),
-			},
-
 			"service_registries": {
 				Type:     schema.TypeSet,
 				Optional: true,
@@ -370,7 +346,6 @@ func resourceAwsEcsService() *schema.Resource {
 					},
 				},
 			},
-			"tags": tagsSchema(),
 		},
 	}
 }
@@ -406,9 +381,7 @@ func resourceAwsEcsServiceCreate(d *schema.ResourceData, meta interface{}) error
 		DeploymentController: expandEcsDeploymentController(d.Get("deployment_controller").([]interface{})),
 		SchedulingStrategy:   aws.String(schedulingStrategy),
 		ServiceName:          aws.String(d.Get("name").(string)),
-		Tags:                 keyvaluetags.New(d.Get("tags").(map[string]interface{})).IgnoreAws().EcsTags(),
 		TaskDefinition:       aws.String(d.Get("task_definition").(string)),
-		EnableECSManagedTags: aws.Bool(d.Get("enable_ecs_managed_tags").(bool)),
 	}
 
 	if schedulingStrategy == ecs.SchedulingStrategyDaemon && deploymentMinimumHealthyPercent != 100 {
@@ -433,10 +406,6 @@ func resourceAwsEcsServiceCreate(d *schema.ResourceData, meta interface{}) error
 
 	if v, ok := d.GetOk("launch_type"); ok {
 		input.LaunchType = aws.String(v.(string))
-	}
-
-	if v, ok := d.GetOk("propagate_tags"); ok {
-		input.PropagateTags = aws.String(v.(string))
 	}
 
 	if v, ok := d.GetOk("platform_version"); ok {
@@ -557,7 +526,6 @@ func resourceAwsEcsServiceRead(d *schema.ResourceData, meta interface{}) error {
 	log.Printf("[DEBUG] Reading ECS service %s", d.Id())
 	input := ecs.DescribeServicesInput{
 		Cluster:  aws.String(d.Get("cluster").(string)),
-		Include:  []*string{aws.String(ecs.ServiceFieldTags)},
 		Services: []*string{aws.String(d.Id())},
 	}
 
@@ -630,8 +598,6 @@ func resourceAwsEcsServiceRead(d *schema.ResourceData, meta interface{}) error {
 	d.Set("desired_count", service.DesiredCount)
 	d.Set("health_check_grace_period_seconds", service.HealthCheckGracePeriodSeconds)
 	d.Set("launch_type", service.LaunchType)
-	d.Set("enable_ecs_managed_tags", service.EnableECSManagedTags)
-	d.Set("propagate_tags", service.PropagateTags)
 	d.Set("platform_version", service.PlatformVersion)
 
 	// Save cluster in the same format
@@ -683,10 +649,6 @@ func resourceAwsEcsServiceRead(d *schema.ResourceData, meta interface{}) error {
 
 	if err := d.Set("service_registries", flattenServiceRegistries(service.ServiceRegistries)); err != nil {
 		return fmt.Errorf("Error setting service_registries for (%s): %s", d.Id(), err)
-	}
-
-	if err := d.Set("tags", keyvaluetags.EcsKeyValueTags(service.Tags).IgnoreAws().Map()); err != nil {
-		return fmt.Errorf("error setting tags: %s", err)
 	}
 
 	return nil
@@ -962,14 +924,6 @@ func resourceAwsEcsServiceUpdate(d *schema.ResourceData, meta interface{}) error
 		}
 		if err != nil {
 			return fmt.Errorf("Error updating ECS Service (%s): %s", d.Id(), err)
-		}
-	}
-
-	if d.HasChange("tags") {
-		o, n := d.GetChange("tags")
-
-		if err := keyvaluetags.EcsUpdateTags(conn, d.Id(), o, n); err != nil {
-			return fmt.Errorf("error updating ECS Service (%s) tags: %s", d.Id(), err)
 		}
 	}
 
